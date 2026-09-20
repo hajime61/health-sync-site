@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Health Sync</title>
+<style>
+  body { font-family: -apple-system, "Hiragino Sans", sans-serif; line-height: 1.8;
+         max-width: 720px; margin: 0 auto; padding: 40px 20px; color: #222; }
+  h1 { border-bottom: 2px solid #4285f4; padding-bottom: 8px; }
+  h2 { margin-top: 32px; font-size: 1.1rem; }
+  ul { padding-left: 1.2em; }
+  footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #ddd; font-size: .9rem; color: #666; }
+</style>
+</head>
+<body>
+<h1>Health Sync</h1>
+
+<p>Health Sync は、作成者本人の健康データを自分専用の Google スプレッドシートに
+記録するための個人用スクリプトです。一般公開されたサービスではありません。</p>
+
+<h2>機能</h2>
+<ul>
+  <li>Google Health API から、利用者本人の歩数・睡眠・心拍などのデータを1日1回取得する</li>
+  <li>取得したデータを、利用者本人が所有する Google スプレッドシートに記録する</li>
+  <li>記録したデータをもとに、体調や生活習慣の推移を振り返る</li>
+</ul>
+
+<h2>取得するデータ</h2>
+<ul>
+  <li>活動量（歩数、距離、消費カロリー、活動時間）</li>
+  <li>心拍（平均・最小・最大、安静時心拍、心拍変動）</li>
+  <li>睡眠（就寝・起床時刻、睡眠ステージ別の時間）</li>
+  <li>身体測定値（体重、体脂肪率）</li>
+  <li>栄養・水分の記録（利用者が記録している場合のみ）</li>
+</ul>
+
+<h2>プライバシー</h2>
+<p>取得したデータは、利用者本人の Google スプレッドシート以外には送信されません。
+詳細は <a href="privacy.html">プライバシーポリシー</a> をご覧ください。</p>
+
+<footer>
+  <a href="privacy.html">プライバシーポリシー</a> ｜
+  <a href="terms.html">利用規約</a>
+</footer>
+</body>
+</html>
