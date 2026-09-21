@@ -107,6 +107,7 @@
 
     <div class="actions">
       <button id="sync">再同期</button>
+      <button id="refetch">全件取り直す</button>
       <button id="reset">接続設定を消す</button>
     </div>
   </section>
@@ -309,12 +310,32 @@ async function fetchData(from) {
 
 /** 手元のデータに差分を統合する（同じ日付は新しい方で置き換え） */
 function merge(oldP, newP) {
-  if (!oldP || oldP.columns.join() !== newP.columns.join()) return newP;
+  if (!oldP || !oldP.rows) return newP;
   const di = newP.columns.indexOf('date');
-  const map = new Map(oldP.rows.map(r => [r[di], r]));
+
+  // 列構成が変わっても手元の履歴を捨てない。列名で並べ替えてから統合する
+  const oldRows = (oldP.columns.join() === newP.columns.join())
+    ? oldP.rows
+    : Stats.remapRows(oldP.columns, newP.columns, oldP.rows);
+
+  const map = new Map(oldRows.map(r => [r[di], r]));
   newP.rows.forEach(r => map.set(r[di], r));
   return Object.assign({}, newP,
     { rows: [...map.values()].sort((a, b) => (a[di] < b[di] ? -1 : 1)) });
+}
+
+/** 手元のデータを捨てて全期間を取り直す（接続設定は保持する） */
+async function refetchAll() {
+  if (!confirm('保存済みのデータを消して、全期間を取り直します。よろしいですか？')) return;
+  localStorage.removeItem('hd.data');
+  $('status').textContent = '全件取得中…';
+  try {
+    const fresh = await fetchData('');
+    LS.set('data', fresh);
+    render(fresh);
+  } catch (e) {
+    $('status').textContent = '取得できません（' + e.message + '）';
+  }
 }
 
 async function sync() {
@@ -351,7 +372,8 @@ $('save').onclick = () => {
   $('setup').classList.add('hide'); $('app').classList.remove('hide');
   sync();
 };
-$('sync').onclick  = sync;
+$('sync').onclick    = sync;
+$('refetch').onclick = refetchAll;
 $('reset').onclick = () => { LS.clear(); location.reload(); };
 
 boot();

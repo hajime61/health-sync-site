@@ -176,6 +176,19 @@
     };
   }
 
+  // ── 列構成の変化への追従 ────────────────────────────────────
+  /**
+   * 古い行を新しい列構成に並べ替える。対応付けは列名で行う。
+   *
+   * 列が増減したときに手元のデータを捨てると、端末に溜めた履歴が消えてしまう。
+   * 欠けている列は null（0ではない）で埋め、欠損として扱わせる。
+   */
+  function remapRows(oldCols, newCols, rows) {
+    const idx = {};
+    oldCols.forEach((c, i) => { idx[c] = i; });
+    return rows.map(r => newCols.map(c => (idx[c] === undefined ? null : r[idx[c]])));
+  }
+
   // ── 表示対象日 ──────────────────────────────────────────────
   /**
    * 表示する日付を決める。
@@ -220,6 +233,6 @@
     index: index, isWornDay: isWornDay, valueOf: valueOf, rowOf: rowOf, series: series,
     baseline: baseline, zscore: zscore, judge: judge, inRange: inRange,
     illnessSignal: illnessSignal, trend: trend, shiftDate: shiftDate,
-    targetDate: targetDate, todayJST: todayJST,
+    targetDate: targetDate, todayJST: todayJST, remapRows: remapRows,
   };
 });
