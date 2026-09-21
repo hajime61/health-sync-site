@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.json">
+<title>Health Dashboard</title>
+<style>
+  :root {
+    --bg:#f6f7f9; --card:#fff; --fg:#14171c; --muted:#6b7280; --line:#e4e7eb;
+    --ok:#16a34a; --warn:#d97706; --bad:#dc2626; --accent:#2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1115; --card:#181b21; --fg:#e8eaed; --muted:#9aa2ad; --line:#272b33; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-size:15px; line-height:1.6;
+         font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+         padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  .wrap { max-width:620px; margin:0 auto; padding:16px; }
+  header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px; }
+  h1 { font-size:1.15rem; margin:0; }
+  .sub { color:var(--muted); font-size:.8rem; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-top:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
+  .card h2 { font-size:.78rem; margin:0 0 6px; color:var(--muted); font-weight:600; }
+  .val { font-size:1.55rem; font-weight:650; letter-spacing:-.02em; }
+  .val .u { font-size:.8rem; font-weight:400; color:var(--muted); margin-left:2px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin-top:7px; }
+  .tag { font-size:.7rem; padding:1px 7px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
+  .tag.ok{color:var(--ok);border-color:currentColor} .tag.low,.tag.high,.tag.below{color:var(--warn);border-color:currentColor}
+  .tag.strong{color:var(--bad);border-color:currentColor}
+  svg.spark { display:block; width:100%; height:30px; margin-top:8px; }
+
+  .signal { margin-top:14px; padding:13px 15px; border-radius:12px;
+            border:1px solid var(--bad); background:color-mix(in srgb,var(--bad) 8%,transparent); }
+  .signal h2 { margin:0 0 4px; font-size:.95rem; color:var(--bad); }
+  .signal p { margin:0; font-size:.85rem; }
+
+  .note { margin-top:20px; padding:12px 14px; border:1px solid var(--line); border-radius:10px;
+          color:var(--muted); font-size:.75rem; }
+  button { font:inherit; padding:9px 16px; border-radius:9px; border:1px solid var(--line);
+           background:var(--card); color:var(--fg); cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  input { font:inherit; width:100%; padding:9px 11px; border-radius:9px;
+          border:1px solid var(--line); background:var(--card); color:var(--fg); margin-top:5px; }
+  label { display:block; margin-top:12px; font-size:.82rem; color:var(--muted); }
+  .hide { display:none !important; }
+  .actions { display:flex; gap:8px; align-items:center; margin-top:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 初回設定 -->
+  <section id="setup" class="hide">
+    <h1>接続設定</h1>
+    <p class="sub">Apps Script のウェブアプリURLとトークンを入力します。端末内にのみ保存されます。</p>
+    <label>ウェブアプリURL<input id="f-url" placeholder="https://script.google.com/macros/s/.../exec"></label>
+    <label>トークン<input id="f-token" placeholder="generateToken() で作った文字列"></label>
+    <div class="actions"><button class="primary" id="save">接続する</button><span id="err" class="sub"></span></div>
+  </section>
+
+  <!-- 本体 -->
+  <section id="app" class="hide">
+    <header>
+      <h1>健康データ</h1>
+      <span class="sub" id="asof"></span>
+    </header>
+    <div class="sub" id="status"></div>
+
+    <div id="signal"></div>
+    <div class="grid" id="cards"></div>
+
+    <div class="note">
+      表示している目安は一般的な参考値であり、診断ではありません。
+      数値はウェアラブル端末による推定値で、医療機器の測定とは異なります。
+      気になる状態が続く場合は医療機関にご相談ください。
+    </div>
+
+    <div class="actions">
+      <button id="sync">再同期</button>
+      <button id="reset">接続設定を消す</button>
+    </div>
+  </section>
+
+</div>
+
+<script src="stats.js"></script>
+<script>
+// ── 保存 ──────────────────────────────────────────────────────
+const LS = {
+  get url()   { return localStorage.getItem('hd.url'); },
+  get token() { return localStorage.getItem('hd.token'); },
+  get data()  { try { return JSON.parse(localStorage.getItem('hd.data')); } catch (e) { return null; } },
+  set(k, v)   { localStorage.setItem('hd.' + k, typeof v === 'string' ? v : JSON.stringify(v)); },
+  clear()     { ['url','token','data'].forEach(k => localStorage.removeItem('hd.' + k)); },
+};
+
+// カードに出す指標（この順に並ぶ）
+const MAIN = ['sleep_total_min','resting_hr','hrv_ms','spo2_avg','resp_rate',
+              'steps','active_minutes','skin_temp_delta','sedentary_min','sleep_deep_min'];
+
+const $ = id => document.getElementById(id);
+
+// ── 表示の整形 ────────────────────────────────────────────────
+/**
+ * 表示用に整形する。unit は「この値の横に出す単位」を返す。
+ * 「7時間13分」のように単位を文に含める場合は unit を空にする
+ * （呼び出し側で既定の単位にフォールバックさせないため、必ず値を返す）。
+ */
+function fmt(col, v, unit) {
+  if (v === null || v === undefined) return { text: '—', unit: '' };
+
+  if (col === 'sleep_total_min' || col === 'sleep_deep_min' || col === 'sedentary_min') {
+    const h = Math.floor(v / 60), m = Math.round(v % 60);
+    return { text: h ? h + '時間' + (m ? m + '分' : '') : m + '分', unit: '' };
+  }
+  if (col === 'steps' || col === 'workout_steps') {
+    return { text: Math.round(v).toLocaleString(), unit: unit };
+  }
+  if (typeof v === 'number') return { text: String(Math.round(v * 10) / 10), unit: unit };
+  return { text: String(v), unit: unit };
+}
+
+/** 直近 n 日のスパークライン */
+function spark(points) {
+  if (points.length < 2) return '';
+  const vs = points.map(p => p.value);
+  const lo = Math.min(...vs), hi = Math.max(...vs), span = (hi - lo) || 1;
+  const W = 100, H = 30, pad = 3;
+  const d = points.map((p, i) => {
+    const x = (i / (points.length - 1)) * W;
+    const y = H - pad - ((p.value - lo) / span) * (H - pad * 2);
+    return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
+  }).join(' ');
+  const last = points[points.length - 1];
+  const lx = W, ly = H - pad - ((last.value - lo) / span) * (H - pad * 2);
+  return '<svg class="spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+         '<path d="' + d + '" fill="none" stroke="var(--accent)" stroke-width="1.5"' +
+         ' vector-effect="non-scaling-stroke"/>' +
+         '<circle cx="' + lx + '" cy="' + ly.toFixed(1) + '" r="2" fill="var(--accent)"/></svg>';
+}
+
+// ── 描画 ──────────────────────────────────────────────────────
+function render(payload) {
+  const rows = payload.rows;
+  if (!rows.length) { $('status').textContent = 'データがありません'; return; }
+
+  // 最新の「時計を着けていた日」を基準にする
+  const di = Stats.index(payload)['date'];
+  let latest = null;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (Stats.isWornDay(payload, rows[i])) { latest = rows[i]; break; }
+  }
+  latest = latest || rows[rows.length - 1];
+  const date = latest[di];
+
+  $('asof').textContent = date + ' 時点';
+  $('status').textContent = rows.length + '日分（' + rows[0][di] + '〜）';
+
+  // 体調の前触れ
+  const sig = Stats.illnessSignal(payload, date, 30);
+  $('signal').innerHTML = sig.triggered
+    ? '<div class="signal"><h2>体調を崩す前触れかもしれません</h2>' +
+      '<p>安静時心拍・呼吸数・皮膚温がそろって普段より高くなっています。' +
+      '無理をせず休養を取ることをおすすめします。</p></div>'
+    : '';
+
+  // カード
+  $('cards').innerHTML = MAIN.map(col => {
+    const label = payload.labels[col] || col;
+    const unit  = payload.units[col] || '';
+    const v     = Stats.valueOf(payload, latest, col);
+    const f     = fmt(col, v, unit);
+
+    const rng  = Stats.inRange(col, v, payload.ranges);
+    const base = Stats.baseline(payload, col, date, 30);
+    const z    = Stats.zscore(v, base);
+    const j    = Stats.judge(z);
+
+    const tags = [];
+    if (rng) tags.push('<span class="tag ' + rng.status + '">' + rng.label + '</span>');
+    if (z !== null) {
+      const cls = j.level === 'strong' ? 'strong' : j.level === 'slight' ? 'low' : 'ok';
+      tags.push('<span class="tag ' + cls + '">平均比 ' + j.label + '</span>');
+    } else if (v !== null) {
+      tags.push('<span class="tag">比較するデータが不足</span>');
+    }
+
+    const hist = Stats.series(payload, col).slice(-30);
+
+    return '<div class="card"><h2>' + label + '</h2>' +
+           '<div class="val">' + f.text +
+           '<span class="u">' + f.unit + '</span></div>' +
+           '<div class="row">' + tags.join('') + '</div>' + spark(hist) + '</div>';
+  }).join('');
+}
+
+// ── 取得 ──────────────────────────────────────────────────────
+async function fetchData(from) {
+  const url = LS.url + (LS.url.includes('?') ? '&' : '?') +
+              'token=' + encodeURIComponent(LS.token) + (from ? '&from=' + from : '');
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const j = await res.json();
+  if (j.error) throw new Error(j.error);
+  return j;
+}
+
+/** 手元のデータに差分を統合する（同じ日付は新しい方で置き換え） */
+function merge(oldP, newP) {
+  if (!oldP || oldP.columns.join() !== newP.columns.join()) return newP;
+  const di = newP.columns.indexOf('date');
+  const map = new Map(oldP.rows.map(r => [r[di], r]));
+  newP.rows.forEach(r => map.set(r[di], r));
+  const rows = [...map.values()].sort((a, b) => (a[di] < b[di] ? -1 : 1));
+  return Object.assign({}, newP, { rows: rows });
+}
+
+async function sync() {
+  const cached = LS.data;
+  $('status').textContent = '同期中…';
+  try {
+    // 手元にデータがあれば直近7日だけ取り直す（書き換わるため少し重ねる）
+    const from = cached && cached.rows.length
+      ? Stats.shiftDate(cached.rows[cached.rows.length - 1][cached.columns.indexOf('date')], -7)
+      : '';
+    const fresh = merge(cached, await fetchData(from));
+    LS.set('data', fresh);
+    render(fresh);
+  } catch (e) {
+    $('status').textContent = '同期できません（' + e.message + '）' +
+      (cached ? ' — 保存済みのデータを表示しています' : '');
+    if (!cached) $('setup').classList.remove('hide');
+  }
+}
+
+// ── 起動 ──────────────────────────────────────────────────────
+function boot() {
+  if (!LS.url || !LS.token) { $('setup').classList.remove('hide'); return; }
+  $('app').classList.remove('hide');
+  const cached = LS.data;
+  if (cached) render(cached);      // まず手元のデータを即描画（オフラインでも見える）
+  sync();                          // その後に更新
+}
+
+$('save').onclick = () => {
+  const u = $('f-url').value.trim(), t = $('f-token').value.trim();
+  if (!/^https:\/\/script\.google\.com\//.test(u)) { $('err').textContent = 'URLを確認してください'; return; }
+  if (!t) { $('err').textContent = 'トークンを入力してください'; return; }
+  LS.set('url', u); LS.set('token', t);
+  $('setup').classList.add('hide'); $('app').classList.remove('hide');
+  sync();
+};
+$('sync').onclick  = sync;
+$('reset').onclick = () => { LS.clear(); location.reload(); };
+
+boot();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
