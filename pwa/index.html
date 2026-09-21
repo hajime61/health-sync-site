@@ -20,7 +20,8 @@
          padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
   .wrap { max-width:620px; margin:0 auto; padding:16px; }
   header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
-  h1 { font-size:1.15rem; margin:0; }
+  h1 { font-size:1.05rem; margin:0; }
+  h1 .t { font-size:.72rem; font-weight:400; color:var(--muted); margin-left:6px; }
   .sub { color:var(--muted); font-size:.8rem; }
   .bar { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; }
 
@@ -183,6 +184,16 @@ function deltaText(col, diff) {
   return (diff >= 0 ? '+' : '−') + n.toLocaleString() + suffix;
 }
 
+/** ISO文字列を JST の HH:mm にする */
+function jstTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const j = new Date(d.getTime() + 9 * 3600 * 1000);
+  return String(j.getUTCHours()).padStart(2, '0') + ':' +
+         String(j.getUTCMinutes()).padStart(2, '0');
+}
+
 /** 直近30日のスパークライン */
 function spark(points) {
   if (points.length < 2) return '';
@@ -210,12 +221,15 @@ function render(payload) {
   if (!date) { $('status').textContent = 'データがありません'; return; }
   const row = Stats.rowOf(payload, date);
 
+  const today = Stats.todayJST();
   const d  = new Date(date + 'T00:00:00Z');
   const wd = ['日','月','火','水','木','金','土'][d.getUTCDay()];
-  $('asof').textContent  = (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日（' + wd + '）';
-  const di = Stats.index(payload)['date'];
-  $('status').textContent = payload.rows.length + '日分';
-  $('hint').textContent   = '目安と平均は直近30日で算出';
+  // その行を最後に同期した時刻。データの鮮度が分かる
+  const upd = jstTime(Stats.valueOf(payload, row, 'updated_at'));
+  $('asof').innerHTML = (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日（' + wd + '）' +
+                        (date === today ? ' 今日' : '') +
+                        (upd ? '<span class="t">' + upd + ' 更新</span>' : '');
+  $('hint').textContent = payload.rows.length + '日分 ・ 目安と平均は直近30日で算出';
 
   // 体調の前触れ
   const sig = Stats.illnessSignal(payload, date, 30);
@@ -232,18 +246,25 @@ function render(payload) {
     const v     = Stats.valueOf(payload, row, col);
     const f     = fmt(col, v, unit);
 
-    const rng  = Stats.inRange(col, v, payload.ranges);
+    // 当日の累積指標はまだ増える途中。全日の平均や目安と比べると
+    // 朝は必ず「低い」と出てしまうため、判定自体を出さない
+    const partial = Stats.isPartial(col, date, today);
     const base = Stats.baseline(payload, col, date, 30);
-    const z    = Stats.zscore(v, base);
-    const j    = Stats.judge(z);
 
     const tags = [];
-    if (rng) tags.push('<span class="tag ' + rng.status + '">' + rng.label + '</span>');
-    if (z !== null) {
-      const cls = j.level === 'strong' ? 'strong' : j.level === 'slight' ? 'low' : 'ok';
-      tags.push('<span class="tag ' + cls + '">' + j.label + '</span>');
-    } else if (v !== null) {
-      tags.push('<span class="tag">比較するデータが不足</span>');
+    if (partial) {
+      tags.push('<span class="tag">進行中</span>');
+    } else {
+      const rng = Stats.inRange(col, v, payload.ranges);
+      const z   = Stats.zscore(v, base);
+      const j   = Stats.judge(z);
+      if (rng) tags.push('<span class="tag ' + rng.status + '">' + rng.label + '</span>');
+      if (z !== null) {
+        const cls = j.level === 'strong' ? 'strong' : j.level === 'slight' ? 'low' : 'ok';
+        tags.push('<span class="tag ' + cls + '">' + j.label + '</span>');
+      } else if (v !== null) {
+        tags.push('<span class="tag">比較するデータが不足</span>');
+      }
     }
 
     // 目安と平均を実数で出す
@@ -253,7 +274,12 @@ function render(payload) {
     // 「なぜ目安が無いのか」も伝わる
     meta.push('<div><dt>目安</dt><dd>' +
       (rt || '<em style="margin:0">個人差が大きく設定なし</em>') + '</dd></div>');
-    if (base.mean !== null) {
+    if (partial) {
+      // 平均比の代わりに昨日の最終値を出す。進み具合の目安になる
+      const prev = Stats.rowOf(payload, Stats.shiftDate(date, -1));
+      const pv   = prev ? Stats.valueOf(payload, prev, col) : null;
+      meta.push('<div><dt>昨日</dt><dd>' + fmt(col, pv, '').text + '</dd></div>');
+    } else if (base.mean !== null) {
       const diff = (typeof v === 'number') ? v - base.mean : null;
       meta.push('<div><dt>平均</dt><dd>' + fmt(col, base.mean, '').text +
                 (diff === null ? '' : '<em>' + deltaText(col, diff) + '</em>') + '</dd></div>');

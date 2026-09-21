@@ -33,6 +33,18 @@
     'skin_temp_c', 'skin_temp_delta',
   ]);
 
+  // 1日かけて積み上がる指標。当日を表示するとき、これらを「全日の平均」と
+  // 比べると朝は必ず「かなり低い」と出て誤警告になるため、判定を抑制する。
+  // 睡眠・安静時心拍・HRV・SpO2・呼吸数・皮膚温は前夜に確定するので対象外。
+  const CUMULATIVE = new Set([
+    'steps', 'distance_km', 'floors', 'active_kcal', 'total_kcal',
+    'active_minutes', 'active_min_light', 'active_min_moderate', 'active_min_vigorous',
+    'active_zone_minutes', 'sedentary_min',
+    'water_ml', 'kcal_in', 'protein_g', 'fat_g', 'carbs_g',
+    'workout_count', 'workout_minutes', 'workout_kcal',
+    'workout_distance_km', 'workout_steps',
+  ]);
+
   const MIN_SAMPLES   = 7;    // これ未満なら判定しない
   const DEFAULT_DAYS  = 30;   // ベースラインの窓
 
@@ -191,17 +203,20 @@
 
   // ── 表示対象日 ──────────────────────────────────────────────
   /**
-   * 表示する日付を決める。
+   * 表示する日付を決める。当日を含む、最も新しい装着日。
    *
-   * 同期は毎朝5時に走るため、当日の行は数時間分しか埋まっていない。
-   * そのまま出すと歩数などが極端に低く見えるので、既定では「昨日」を見る。
-   * 昨日の行が無い（同期前・欠測）場合は、それ以前で最も新しい装着日まで遡る。
+   * 当日の行は進行中（歩数などが積み上がる途中）だが、睡眠・安静時心拍・HRV・
+   * SpO2・呼吸数・皮膚温は前夜に確定しているため、当日を見る価値が大きい。
+   * 特に体調の前触れ判定は確定済みの指標だけで成り立つので、当日の朝に気づける。
+   * 進行中の指標は isPartial() で判定を抑制すること。
+   *
+   * 当日の行が無い（未同期・未装着）場合は、それ以前の装着日まで遡る。
    */
   function targetDate(payload, today) {
     const di = index(payload)['date'];
     if (!payload.rows.length) return null;
 
-    const limit = shiftDate(today, -1);   // 昨日まで
+    const limit = today;
 
     for (let i = payload.rows.length - 1; i >= 0; i--) {
       const r = payload.rows[i];
@@ -212,6 +227,14 @@
       if (payload.rows[i][di] <= limit) return payload.rows[i][di];
     }
     return payload.rows[payload.rows.length - 1][di];
+  }
+
+  /**
+   * その指標が「まだ増える途中」か。
+   * 表示日が当日で、かつ累積指標のときだけ true。
+   */
+  function isPartial(col, date, today) {
+    return date === today && CUMULATIVE.has(col);
   }
 
   /** 端末のタイムゾーンによらず JST の今日を返す */
@@ -234,5 +257,6 @@
     baseline: baseline, zscore: zscore, judge: judge, inRange: inRange,
     illnessSignal: illnessSignal, trend: trend, shiftDate: shiftDate,
     targetDate: targetDate, todayJST: todayJST, remapRows: remapRows,
+    isPartial: isPartial, CUMULATIVE: CUMULATIVE,
   };
 });
