@@ -176,6 +176,36 @@
     };
   }
 
+  // ── 表示対象日 ──────────────────────────────────────────────
+  /**
+   * 表示する日付を決める。
+   *
+   * 同期は毎朝5時に走るため、当日の行は数時間分しか埋まっていない。
+   * そのまま出すと歩数などが極端に低く見えるので、既定では「昨日」を見る。
+   * 昨日の行が無い（同期前・欠測）場合は、それ以前で最も新しい装着日まで遡る。
+   */
+  function targetDate(payload, today) {
+    const di = index(payload)['date'];
+    if (!payload.rows.length) return null;
+
+    const limit = shiftDate(today, -1);   // 昨日まで
+
+    for (let i = payload.rows.length - 1; i >= 0; i--) {
+      const r = payload.rows[i];
+      if (r[di] <= limit && isWornDay(payload, r)) return r[di];
+    }
+    // 装着日が見つからなければ、昨日以前で最も新しい行
+    for (let i = payload.rows.length - 1; i >= 0; i--) {
+      if (payload.rows[i][di] <= limit) return payload.rows[i][di];
+    }
+    return payload.rows[payload.rows.length - 1][di];
+  }
+
+  /** 端末のタイムゾーンによらず JST の今日を返す */
+  function todayJST() {
+    return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  }
+
   // ── 日付ユーティリティ ──────────────────────────────────────
   /** 'yyyy-MM-dd' を n 日ずらす（UTC正午起点で丸め誤差を避ける） */
   function shiftDate(dateStr, n) {
@@ -190,5 +220,6 @@
     index: index, isWornDay: isWornDay, valueOf: valueOf, rowOf: rowOf, series: series,
     baseline: baseline, zscore: zscore, judge: judge, inRange: inRange,
     illnessSignal: illnessSignal, trend: trend, shiftDate: shiftDate,
+    targetDate: targetDate, todayJST: todayJST,
   };
 });

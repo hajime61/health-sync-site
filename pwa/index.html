@@ -19,36 +19,57 @@
          font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
          padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
   .wrap { max-width:620px; margin:0 auto; padding:16px; }
-  header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
   h1 { font-size:1.15rem; margin:0; }
   .sub { color:var(--muted); font-size:.8rem; }
+  .bar { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; }
 
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-top:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-top:12px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
+  .chead { display:flex; align-items:flex-start; justify-content:space-between; gap:4px; }
   .card h2 { font-size:.78rem; margin:0 0 6px; color:var(--muted); font-weight:600; }
-  .val { font-size:1.55rem; font-weight:650; letter-spacing:-.02em; }
-  .val .u { font-size:.8rem; font-weight:400; color:var(--muted); margin-left:2px; }
-  .row { display:flex; gap:6px; flex-wrap:wrap; margin-top:7px; }
+  .val { font-size:1.5rem; font-weight:650; letter-spacing:-.02em; }
+  .val .u { font-size:.78rem; font-weight:400; color:var(--muted); margin-left:2px; }
+  .row { display:flex; gap:5px; flex-wrap:wrap; margin-top:6px; }
   .tag { font-size:.7rem; padding:1px 7px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
-  .tag.ok{color:var(--ok);border-color:currentColor} .tag.low,.tag.high,.tag.below{color:var(--warn);border-color:currentColor}
+  .tag.ok{color:var(--ok);border-color:currentColor}
+  .tag.low,.tag.high,.tag.below{color:var(--warn);border-color:currentColor}
   .tag.strong{color:var(--bad);border-color:currentColor}
-  svg.spark { display:block; width:100%; height:30px; margin-top:8px; }
 
-  .signal { margin-top:14px; padding:13px 15px; border-radius:12px;
+  /* 目安と平均の実数 */
+  .meta { margin:8px 0 0; padding:7px 0 0; border-top:1px solid var(--line);
+          display:grid; gap:2px; font-size:.74rem; }
+  .meta div { display:flex; gap:6px; align-items:baseline; }
+  .meta dt { color:var(--muted); width:2.4em; flex:none; margin:0; }
+  .meta dd { margin:0; font-variant-numeric:tabular-nums; }
+  .meta em { font-style:normal; color:var(--muted); margin-left:4px; }
+
+  svg.spark { display:block; width:100%; height:28px; margin-top:8px; }
+
+  .signal { margin-top:12px; padding:13px 15px; border-radius:12px;
             border:1px solid var(--bad); background:color-mix(in srgb,var(--bad) 8%,transparent); }
   .signal h2 { margin:0 0 4px; font-size:.95rem; color:var(--bad); }
   .signal p { margin:0; font-size:.85rem; }
 
-  .note { margin-top:20px; padding:12px 14px; border:1px solid var(--line); border-radius:10px;
+  .note { margin-top:18px; padding:12px 14px; border:1px solid var(--line); border-radius:10px;
           color:var(--muted); font-size:.75rem; }
-  button { font:inherit; padding:9px 16px; border-radius:9px; border:1px solid var(--line);
+  button { font:inherit; padding:8px 14px; border-radius:9px; border:1px solid var(--line);
            background:var(--card); color:var(--fg); cursor:pointer; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.sm { padding:3px 9px; font-size:.8rem; }
   input { font:inherit; width:100%; padding:9px 11px; border-radius:9px;
           border:1px solid var(--line); background:var(--card); color:var(--fg); margin-top:5px; }
   label { display:block; margin-top:12px; font-size:.82rem; color:var(--muted); }
   .hide { display:none !important; }
-  .actions { display:flex; gap:8px; align-items:center; margin-top:18px; }
+  .actions { display:flex; gap:8px; align-items:center; margin-top:16px; flex-wrap:wrap; }
+
+  /* 並び替えモード */
+  .ord { display:none; gap:3px; flex:none; }
+  .ord button { padding:0; width:26px; height:26px; line-height:1; border-radius:7px; font-size:.85rem; }
+  .ord button[disabled] { opacity:.3; }
+  body.editing .ord { display:flex; }
+  body.editing .card { border-color:var(--accent); }
+  body.editing .meta, body.editing svg.spark, body.editing .row { opacity:.35; }
 </style>
 </head>
 <body>
@@ -66,16 +87,20 @@
   <!-- 本体 -->
   <section id="app" class="hide">
     <header>
-      <h1>健康データ</h1>
-      <span class="sub" id="asof"></span>
+      <h1 id="asof">健康データ</h1>
+      <span class="sub" id="status"></span>
     </header>
-    <div class="sub" id="status"></div>
 
     <div id="signal"></div>
     <div class="grid" id="cards"></div>
 
+    <div class="bar">
+      <span class="sub" id="hint"></span>
+      <button class="sm" id="edit">並び替え</button>
+    </div>
+
     <div class="note">
-      表示している目安は一般的な参考値であり、診断ではありません。
+      「目安」は一般的な参考値であり、診断ではありません。
       数値はウェアラブル端末による推定値で、医療機器の測定とは異なります。
       気になる状態が続く場合は医療機関にご相談ください。
     </div>
@@ -95,26 +120,33 @@ const LS = {
   get url()   { return localStorage.getItem('hd.url'); },
   get token() { return localStorage.getItem('hd.token'); },
   get data()  { try { return JSON.parse(localStorage.getItem('hd.data')); } catch (e) { return null; } },
+  get order() { try { return JSON.parse(localStorage.getItem('hd.order')); } catch (e) { return null; } },
   set(k, v)   { localStorage.setItem('hd.' + k, typeof v === 'string' ? v : JSON.stringify(v)); },
-  clear()     { ['url','token','data'].forEach(k => localStorage.removeItem('hd.' + k)); },
+  clear()     { ['url','token','data','order'].forEach(k => localStorage.removeItem('hd.' + k)); },
 };
 
-// カードに出す指標（この順に並ぶ）
-const MAIN = ['sleep_total_min','resting_hr','hrv_ms','spo2_avg','resp_rate',
-              'steps','active_minutes','skin_temp_delta','sedentary_min','sleep_deep_min'];
+// 既定の並び順
+const DEFAULT_ORDER = ['sleep_total_min','resting_hr','hrv_ms','spo2_avg','resp_rate',
+                       'steps','active_minutes','skin_temp_delta','sedentary_min','sleep_deep_min'];
+
+/** 保存済みの並びに、新しく増えた項目を後ろへ足して返す */
+function order() {
+  const saved = LS.order || [];
+  const known = saved.filter(c => DEFAULT_ORDER.includes(c));
+  return known.concat(DEFAULT_ORDER.filter(c => !known.includes(c)));
+}
 
 const $ = id => document.getElementById(id);
+let editing = false;
 
 // ── 表示の整形 ────────────────────────────────────────────────
-/**
- * 表示用に整形する。unit は「この値の横に出す単位」を返す。
- * 「7時間13分」のように単位を文に含める場合は unit を空にする
- * （呼び出し側で既定の単位にフォールバックさせないため、必ず値を返す）。
- */
+const TIME_COLS = ['sleep_total_min','sleep_deep_min','sedentary_min'];
+
+/** 値と、その横に出す単位を返す（単位を文に含める場合は unit を空にする） */
 function fmt(col, v, unit) {
   if (v === null || v === undefined) return { text: '—', unit: '' };
 
-  if (col === 'sleep_total_min' || col === 'sleep_deep_min' || col === 'sedentary_min') {
+  if (TIME_COLS.includes(col)) {
     const h = Math.floor(v / 60), m = Math.round(v % 60);
     return { text: h ? h + '時間' + (m ? m + '分' : '') : m + '分', unit: '' };
   }
@@ -125,41 +157,64 @@ function fmt(col, v, unit) {
   return { text: String(v), unit: unit };
 }
 
-/** 直近 n 日のスパークライン */
+/** 目安を実数で表す。baselineOnly と未定義は null */
+function rangeText(col, ranges, unit) {
+  const r = (ranges || {})[col];
+  if (!r || r.baselineOnly) return null;
+  const n = v => fmt(col, v, '').text;
+
+  if (r.goal !== undefined) return n(r.goal) + ' 以上';
+  if (r.min !== undefined && r.max !== undefined) return n(r.min) + '〜' + n(r.max);
+  if (r.min !== undefined) return n(r.min) + ' 以上';
+  if (r.max !== undefined) return n(r.max) + ' 以下';
+  return null;
+}
+
+/** 平均との差を符号付きで表す */
+function deltaText(col, diff) {
+  if (diff === null) return '';
+  const a = Math.abs(diff);
+  const n = TIME_COLS.includes(col) ? Math.round(a)
+          : col === 'steps'         ? Math.round(a)
+          :                           Math.round(a * 10) / 10;
+  const suffix = TIME_COLS.includes(col) ? '分' : '';
+  if (n === 0) return '±0' + suffix;                       // 「−0分」を避ける
+  return (diff >= 0 ? '+' : '−') + n.toLocaleString() + suffix;
+}
+
+/** 直近30日のスパークライン */
 function spark(points) {
   if (points.length < 2) return '';
   const vs = points.map(p => p.value);
   const lo = Math.min(...vs), hi = Math.max(...vs), span = (hi - lo) || 1;
-  const W = 100, H = 30, pad = 3;
+  const W = 100, H = 28, pad = 3;
   const d = points.map((p, i) => {
     const x = (i / (points.length - 1)) * W;
     const y = H - pad - ((p.value - lo) / span) * (H - pad * 2);
     return (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
   }).join(' ');
-  const last = points[points.length - 1];
-  const lx = W, ly = H - pad - ((last.value - lo) / span) * (H - pad * 2);
+  const ly = H - pad - ((vs[vs.length - 1] - lo) / span) * (H - pad * 2);
   return '<svg class="spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
          '<path d="' + d + '" fill="none" stroke="var(--accent)" stroke-width="1.5"' +
          ' vector-effect="non-scaling-stroke"/>' +
-         '<circle cx="' + lx + '" cy="' + ly.toFixed(1) + '" r="2" fill="var(--accent)"/></svg>';
+         '<circle cx="' + W + '" cy="' + ly.toFixed(1) + '" r="2" fill="var(--accent)"/></svg>';
 }
 
 // ── 描画 ──────────────────────────────────────────────────────
 function render(payload) {
-  const rows = payload.rows;
-  if (!rows.length) { $('status').textContent = 'データがありません'; return; }
+  if (!payload.rows.length) { $('status').textContent = 'データがありません'; return; }
 
-  // 最新の「時計を着けていた日」を基準にする
+  // 同期は毎朝5時。当日は数時間分しか無いので既定は昨日を見る
+  const date = Stats.targetDate(payload, Stats.todayJST());
+  if (!date) { $('status').textContent = 'データがありません'; return; }
+  const row = Stats.rowOf(payload, date);
+
+  const d  = new Date(date + 'T00:00:00Z');
+  const wd = ['日','月','火','水','木','金','土'][d.getUTCDay()];
+  $('asof').textContent  = (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日（' + wd + '）';
   const di = Stats.index(payload)['date'];
-  let latest = null;
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (Stats.isWornDay(payload, rows[i])) { latest = rows[i]; break; }
-  }
-  latest = latest || rows[rows.length - 1];
-  const date = latest[di];
-
-  $('asof').textContent = date + ' 時点';
-  $('status').textContent = rows.length + '日分（' + rows[0][di] + '〜）';
+  $('status').textContent = payload.rows.length + '日分';
+  $('hint').textContent   = '目安と平均は直近30日で算出';
 
   // 体調の前触れ
   const sig = Stats.illnessSignal(payload, date, 30);
@@ -169,11 +224,11 @@ function render(payload) {
       '無理をせず休養を取ることをおすすめします。</p></div>'
     : '';
 
-  // カード
-  $('cards').innerHTML = MAIN.map(col => {
+  const cols = order();
+  $('cards').innerHTML = cols.map((col, i) => {
     const label = payload.labels[col] || col;
     const unit  = payload.units[col] || '';
-    const v     = Stats.valueOf(payload, latest, col);
+    const v     = Stats.valueOf(payload, row, col);
     const f     = fmt(col, v, unit);
 
     const rng  = Stats.inRange(col, v, payload.ranges);
@@ -185,19 +240,61 @@ function render(payload) {
     if (rng) tags.push('<span class="tag ' + rng.status + '">' + rng.label + '</span>');
     if (z !== null) {
       const cls = j.level === 'strong' ? 'strong' : j.level === 'slight' ? 'low' : 'ok';
-      tags.push('<span class="tag ' + cls + '">平均比 ' + j.label + '</span>');
+      tags.push('<span class="tag ' + cls + '">' + j.label + '</span>');
     } else if (v !== null) {
       tags.push('<span class="tag">比較するデータが不足</span>');
     }
 
-    const hist = Stats.series(payload, col).slice(-30);
+    // 目安と平均を実数で出す
+    const meta = [];
+    const rt = rangeText(col, payload.ranges, unit);
+    // 一般的な基準範囲が無い指標も行自体は出す。カードの高さが揃い、
+    // 「なぜ目安が無いのか」も伝わる
+    meta.push('<div><dt>目安</dt><dd>' +
+      (rt || '<em style="margin:0">個人差が大きく設定なし</em>') + '</dd></div>');
+    if (base.mean !== null) {
+      const diff = (typeof v === 'number') ? v - base.mean : null;
+      meta.push('<div><dt>平均</dt><dd>' + fmt(col, base.mean, '').text +
+                (diff === null ? '' : '<em>' + deltaText(col, diff) + '</em>') + '</dd></div>');
+    } else {
+      meta.push('<div><dt>平均</dt><dd>—<em>' + base.n + '日分のみ</em></dd></div>');
+    }
 
-    return '<div class="card"><h2>' + label + '</h2>' +
-           '<div class="val">' + f.text +
-           '<span class="u">' + f.unit + '</span></div>' +
-           '<div class="row">' + tags.join('') + '</div>' + spark(hist) + '</div>';
+    return '<div class="card" data-col="' + col + '">' +
+           '<div class="chead"><h2>' + label + '</h2>' +
+           '<span class="ord">' +
+             '<button data-d="-1"' + (i === 0 ? ' disabled' : '') + ' aria-label="上へ">↑</button>' +
+             '<button data-d="1"' + (i === cols.length - 1 ? ' disabled' : '') + ' aria-label="下へ">↓</button>' +
+           '</span></div>' +
+           '<div class="val">' + f.text + '<span class="u">' + f.unit + '</span></div>' +
+           '<div class="row">' + tags.join('') + '</div>' +
+           '<dl class="meta">' + meta.join('') + '</dl>' +
+           spark(Stats.series(payload, col).slice(-30)) + '</div>';
   }).join('');
 }
+
+// ── 並び替え ──────────────────────────────────────────────────
+$('cards').addEventListener('click', e => {
+  const btn = e.target.closest('.ord button');
+  if (!btn || !editing) return;
+
+  const col  = btn.closest('.card').dataset.col;
+  const list = order();
+  const i    = list.indexOf(col);
+  const j    = i + Number(btn.dataset.d);
+  if (i < 0 || j < 0 || j >= list.length) return;
+
+  [list[i], list[j]] = [list[j], list[i]];
+  LS.set('order', list);
+  render(LS.data);
+});
+
+$('edit').onclick = () => {
+  editing = !editing;
+  document.body.classList.toggle('editing', editing);
+  $('edit').textContent = editing ? '完了' : '並び替え';
+  $('hint').textContent = editing ? '↑↓ で順番を入れ替えます' : '目安と平均は直近30日で算出';
+};
 
 // ── 取得 ──────────────────────────────────────────────────────
 async function fetchData(from) {
@@ -216,25 +313,25 @@ function merge(oldP, newP) {
   const di = newP.columns.indexOf('date');
   const map = new Map(oldP.rows.map(r => [r[di], r]));
   newP.rows.forEach(r => map.set(r[di], r));
-  const rows = [...map.values()].sort((a, b) => (a[di] < b[di] ? -1 : 1));
-  return Object.assign({}, newP, { rows: rows });
+  return Object.assign({}, newP,
+    { rows: [...map.values()].sort((a, b) => (a[di] < b[di] ? -1 : 1)) });
 }
 
 async function sync() {
   const cached = LS.data;
   $('status').textContent = '同期中…';
   try {
-    // 手元にデータがあれば直近7日だけ取り直す（書き換わるため少し重ねる）
+    const di = cached ? cached.columns.indexOf('date') : 0;
     const from = cached && cached.rows.length
-      ? Stats.shiftDate(cached.rows[cached.rows.length - 1][cached.columns.indexOf('date')], -7)
+      ? Stats.shiftDate(cached.rows[cached.rows.length - 1][di], -7)   // 書き換わるので少し重ねる
       : '';
     const fresh = merge(cached, await fetchData(from));
     LS.set('data', fresh);
     render(fresh);
   } catch (e) {
-    $('status').textContent = '同期できません（' + e.message + '）' +
-      (cached ? ' — 保存済みのデータを表示しています' : '');
-    if (!cached) $('setup').classList.remove('hide');
+    if (cached) { render(cached); $('status').textContent = '保存済みのデータ'; }
+    else { $('status').textContent = '同期できません（' + e.message + '）';
+           $('setup').classList.remove('hide'); }
   }
 }
 
@@ -242,9 +339,8 @@ async function sync() {
 function boot() {
   if (!LS.url || !LS.token) { $('setup').classList.remove('hide'); return; }
   $('app').classList.remove('hide');
-  const cached = LS.data;
-  if (cached) render(cached);      // まず手元のデータを即描画（オフラインでも見える）
-  sync();                          // その後に更新
+  if (LS.data) render(LS.data);   // まず手元のデータを即描画（オフラインでも見える）
+  sync();
 }
 
 $('save').onclick = () => {
